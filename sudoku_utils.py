@@ -16,10 +16,10 @@ def checkRowsCols(board):
                 if rows_nums[val_rows-1] is None:
                     rows_nums[val_rows-1] = True
                 else:
-                    print("found repeated value")
+                    #print("found repeated value")
                     return False
             else:
-                print("value in board is non-valid")
+                #print("value in board is non-valid")
                 return False
 
             # cols
@@ -27,10 +27,10 @@ def checkRowsCols(board):
                 if cols_nums[val_cols-1] is None:
                     cols_nums[val_cols-1] = True
                 else:
-                    print("found repeated value")
+                    #print("found repeated value")
                     return False
             else:
-                print("value in board is non-valid")
+                #print("value in board is non-valid")
                 return False
     return True
 
@@ -50,10 +50,10 @@ def checkSquares(board):
                         if nums[val-1] is None:
                             nums[val-1] = True
                         else:
-                            print("found repeated value")
+                            #print("found repeated value")
                             return False
                     else:
-                        print("value in board is non-valid")
+                        #print("value in board is non-valid")
                         return False
     return True
 
