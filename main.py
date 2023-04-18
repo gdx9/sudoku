@@ -2,33 +2,34 @@ import pygame
 from sudoku_utils import *
 
 class Cell():
-    def __init__(self, y,x,height,width):
+    def __init__(self, y,x,height,width,num):
         self.y = y
         self.x = x
         self.height = height
         self.width = width
+        self.num = num
         self.font = pygame.font.SysFont('Arial', 16)
 
         self.cell_surface = pygame.Surface((self.width, self.height))
         self.cell_rect = pygame.Rect(self.x, self.y, self.width, self.height)
 
 
-    def update_cell_text(self, new_text):
-        self.cell_font_render = self.font.render(new_text, True, (20,20,20))
+    def update_cell_text(self):
+        self.cell_font_render = self.font.render(str(self.num), True, (20,20,20))
 
 class GridCell(Cell):
-    def __init__(self, y,x,height,width,grid_pos_y,grid_pos_x):
-        super().__init__(y,x,height,width)
+    def __init__(self, y,x,height,width,grid_pos_y,grid_pos_x, num=0):# TODO: 0 -> None
+        super().__init__(y,x,height,width,num)
 
         self.grid_pos_y = grid_pos_y
         self.grid_pos_x = grid_pos_x
-        self.cell_font_render = self.font.render(
-            str(self.grid_pos_y)+"x"+str(self.grid_pos_x), True, (20,20,20)
+        self.cell_font_render = self.font.render(str(self.num) if self.num != 0 else "",
+            True, (20,20,20)
         )
 
 class NumberCell(Cell):
     def __init__(self, y,x,height,width, num):
-        super().__init__(y,x,height,width)
+        super().__init__(y,x,height,width, num)
 
         self.cell_font_render = self.font.render(str(num), True, (20,20,20))
 
@@ -70,10 +71,20 @@ class SudokuGui():
         mouse_pos = pygame.mouse.get_pos()
         is_mouse_pressed = pygame.mouse.get_pressed(num_buttons=3)[0]
 
-        for btn in self.grid_cells:
-            if btn.cell_rect.collidepoint(mouse_pos):
+        for cell in self.grid_cells:
+            if cell.cell_rect.collidepoint(mouse_pos):
                 # check if pressed cell
-                return btn.grid_pos_y, btn.grid_pos_x,is_mouse_pressed
+                if is_mouse_pressed:
+                    return {'grid_cell_pressed' : (cell.grid_pos_y, cell.grid_pos_x)}
+                else:
+                    return {'grid_cell_highlight' : (cell.grid_pos_y, cell.grid_pos_x)}
+
+        for number_cell in self.number_cells:
+            if number_cell.cell_rect.collidepoint(mouse_pos):
+                # check if pressed cell
+                if is_mouse_pressed:
+                    return {'number_cell_chosen' : number_cell.num}
+
 
     def is_quit_clicked(self):
         for event in pygame.event.get():
@@ -81,24 +92,33 @@ class SudokuGui():
                 return True
         return False
 
-    def update_gui(self, game_board, highlight_cell_pos_y,highlight_cell_pos_x,is_cell_clicked):
+    def update_gui(self, game_board, current_num, update_gui_data):
+        highlight_cell_pos_y, highlight_cell_pos_x = None, None
+        if 'highlight_cell' in update_gui_data:
+            highlight_cell_pos_y, highlight_cell_pos_x = update_gui_data['highlight_cell']
+        pressed_cell_pos_y, pressed_cell_pos_x = None, None
+        if 'pressed_cell' in update_gui_data:
+            pressed_cell_pos_y, pressed_cell_pos_x = update_gui_data['pressed_cell']
+
         self.screen.fill((20, 20, 20))
 
         for btn in self.grid_cells:
             grid_y, grid_x = btn.grid_pos_y, btn.grid_pos_x
 
             if highlight_cell_pos_y == grid_y and highlight_cell_pos_x == grid_x:
-                fill_type = 'pressed' if is_cell_clicked else 'hover'
+                fill_type = 'hover'
+            elif pressed_cell_pos_y == grid_y and pressed_cell_pos_x == grid_x:
+                fill_type = 'pressed'
             else:
                 fill_type = 'normal'
 
             btn.cell_surface.fill(self.fill_colors[fill_type])
 
-            if highlight_cell_pos_y == grid_y and highlight_cell_pos_x == grid_x and is_cell_clicked:# TODO: this is repeat
-                new_value_text = game_board[grid_y][grid_x]
-                if new_value_text is not None:
-                    # update cell font render with a new text
-                    btn.update_cell_text(str(new_value_text))
+            # check if y and x coordinates same as in gui
+            game_board_value = game_board[grid_y][grid_x]
+            if game_board_value != 0 and game_board_value != btn.num:
+                btn.num = game_board_value
+                btn.update_cell_text()
 
             btn.cell_surface.blit(btn.cell_font_render, [
                 btn.cell_rect.width/2 - btn.cell_font_render.get_rect().width/2,
@@ -107,7 +127,12 @@ class SudokuGui():
             self.screen.blit(btn.cell_surface, btn.cell_rect)
 
         for num_cell in self.number_cells:
-            num_cell.cell_surface.fill(self.fill_colors['normal'])
+            if current_num == num_cell.num:
+                fill_type = 'pressed'
+            else:
+                fill_type = 'normal'
+
+            num_cell.cell_surface.fill(self.fill_colors[fill_type])
 
             num_cell.cell_surface.blit(num_cell.cell_font_render, [
                 num_cell.cell_rect.width/2 - num_cell.cell_font_render.get_rect().width/2,
@@ -125,9 +150,13 @@ class SudokuLogic():
     def __init__(self):
         self.solved_board = generate_sudoku_board()
 
+        #for y in range(9):
+        #    print(self.solved_board[y])
+
+
         if False == checkRowsCols(self.solved_board) or False == checkSquares(self.solved_board):
             raise Exception("board generation failed")
-        clear_table = get_clear_table(percent_clear=40)# erase some numbers
+        clear_table = get_clear_table(percent_clear=10)# erase some numbers
 
         self.game_board = [[el_b*el_c for el_b,el_c in zip(row_board,row_clear)]
                 for row_board,row_clear in zip(self.solved_board,clear_table)]
@@ -145,6 +174,7 @@ class SudokuGame():
     def __init__(self):
         pygame.init()
         self.running = True
+        self.current_number = None
 
         # create gui
         self.sudoku_gui = SudokuGui()
@@ -169,20 +199,31 @@ class SudokuGame():
 
             # check if there's mouse-cell interaction
             cell_action = self.sudoku_gui.get_mouse_cell_action()
-            grid_pos_y,grid_pos_x,is_cell_clicked = None, None, None
+            update_gui_data = {}
 
             # check results in model
             if cell_action is not None:
-                grid_pos_y,grid_pos_x,is_cell_clicked = cell_action
-                if is_cell_clicked:
-                    self.sudoku_model.update_cell(grid_pos_y,grid_pos_x, 1)
-                    self.log_callback(str(grid_pos_y) + ":" + str(grid_pos_x))
+                # update values in model
+                if 'grid_cell_pressed' in cell_action:
+                    grid_pos_y,grid_pos_x = cell_action['grid_cell_pressed']
+                    if self.current_number is not None:
+                        self.sudoku_model.update_cell(grid_pos_y,grid_pos_x, self.current_number)
+                        self.log_callback(str(grid_pos_y) + "x" + str(grid_pos_x) + ": " + str(self.current_number))
+
+                    update_gui_data['pressed_cell'] = (grid_pos_y,grid_pos_x)
+
+                elif 'grid_cell_highlight' in cell_action:
+                    update_gui_data['highlight_cell'] = cell_action['grid_cell_highlight']
+
+                elif 'number_cell_chosen' in cell_action:
+                    self.current_number = cell_action['number_cell_chosen']
+                    self.log_callback("chosen number: " + str(self.current_number))
 
 
             # update gui
             self.sudoku_gui.update_gui(self.sudoku_model.game_board,
-                highlight_cell_pos_y=grid_pos_y,
-                highlight_cell_pos_x=grid_pos_x,is_cell_clicked=is_cell_clicked)
+                self.current_number,
+                update_gui_data)
 
             # check if game completed
             if self.sudoku_model.is_puzzle_solved():
