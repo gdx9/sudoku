@@ -105,6 +105,6 @@ def get_clear_table(percent_clear=40, square_size=3):
     clear_table = [0 for _ in range(num_clear)] + [1 for _ in range(total_digits - num_clear)]
     random.shuffle(clear_table)
     clear_table = [clear_table[9*n:9*n+9] for n in range(9)]# 1D -> 2D
-    print(len(clear_table))
+    #print(len(clear_table))
 
     return clear_table

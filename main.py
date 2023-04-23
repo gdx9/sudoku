@@ -22,6 +22,7 @@ class MouseData:
     pressed_number_cell: int = None
     pressed_hint: bool = False
     pressed_check_correct: bool = False
+    restart: bool = False
 
 class ColorType(Enum):
     NORMAL = 0
@@ -92,6 +93,13 @@ class GridCell(GuiRectangle):
     def get_color(self, color_type: ColorType):
         return GridCell.background_colors.get_color(color_type)
 
+    def reset_cell_data(self, new_cell_data :BoardCell):
+        self.cell_data.value = new_cell_data.value
+        self.cell_data.cell_type = new_cell_data.cell_type
+
+        self.font_render = self.font.render(str(self.cell_data.value) if self.cell_data.value != 0 else "", True, GridCell.get_text_color(self.cell_data.cell_type))
+
+
     def update_cell_text(self, game_board_value, cell_type: CellType):
         if game_board_value == 0:
             return
@@ -114,13 +122,17 @@ class NumberCell(GuiRectangle):
         return NumberCell.background_colors.get_color(color_type)
 
 class GuiButton(GuiRectangle):
-    background_colors = BackgroundColors('#DBA39A', '#EACDC5', '#DBA39A')
+    background_colors = BackgroundColors('#DBA39A', '#EACDC5', '#BC5443')
 
-
-    def __init__(self,screen_pointer,y,x,height,width,text):
+    def __init__(self,screen_pointer,y,x,height,width,text, is_toggable=False):
         super().__init__(screen_pointer,y,x,height,width, 32, text)
+        self.is_toggable = is_toggable
+        self.is_active = False
 
     def get_color(self, color_type: ColorType):
+        if self.is_toggable and self.is_active:
+            color_type = ColorType.PRESSED
+
         return GuiButton.background_colors.get_color(color_type)
 
 class SudokuGui:
@@ -185,7 +197,13 @@ class SudokuGui:
                                             setting_button_height, 80, 'Hint')
         setting_button_pos_y += setting_button_height+setting_button_mergin
         self.button_check_correct = GuiButton(self.screen,setting_button_pos_y, setting_button_pos_x,
-                                            setting_button_height, 120, 'Check')
+                                            setting_button_height, 120, 'Check', True)
+
+    def reset_table(self, game_board):
+        for y in range(0,9):
+            for x in range(0,9):
+                self.grid_cells[y*9+x].reset_cell_data(game_board[y][x])
+
 
     def check_gui_elements_interaction(self, mouse_pos, is_mouse_pressed):
         mouse_data = MouseData(position=mouse_pos)
@@ -207,6 +225,9 @@ class SudokuGui:
             if self.button_check_correct.rect.collidepoint(mouse_pos):
                 mouse_data.pressed_check_correct = True
 
+            if self.button_start_reset.rect.collidepoint(mouse_pos):
+                mouse_data.restart = True
+
         return mouse_data
 
     def check_events(self):
@@ -224,7 +245,7 @@ class SudokuGui:
 
         return is_quit,mouse_pos,is_mouse_pressed
 
-    def update_gui(self, game_board, current_num, mouse_data):
+    def update_gui(self, game_board, current_num, mouse_data, highlight_incorrect):
         mouse_pos = mouse_data.position
 
         self.screen.fill(((254, 252, 243))) # FEFCF3
@@ -251,6 +272,7 @@ class SudokuGui:
 
         self.button_hint.process(ColorType.NORMAL, mouse_pos)
 
+        self.button_check_correct.is_active = highlight_incorrect
         self.button_check_correct.process(ColorType.NORMAL, mouse_pos)
 
         pygame.display.flip()
@@ -289,16 +311,19 @@ class SudokuLogic():
 
                     return
 
-    def update_correct_values(self):
+    def update_correct_values(self, highlight_incorrect):
         for y in range(9):
             for x in range(9):
                 cell_type = self.game_board[y][x].cell_type
                 if cell_type == CellType.CHANGEABLE or cell_type == CellType.CHECKED_WRONG:
-                    if self.game_board[y][x].value != 0:
-                        if self.game_board[y][x].value != self.solved_board[y][x]:
-                            self.game_board[y][x].cell_type = CellType.CHECKED_WRONG
-                        else:
-                            self.game_board[y][x].cell_type = CellType.CHANGEABLE
+                    if highlight_incorrect:
+                        if self.game_board[y][x].value != 0:
+                            if self.game_board[y][x].value != self.solved_board[y][x]:
+                                self.game_board[y][x].cell_type = CellType.CHECKED_WRONG
+                            else:
+                                self.game_board[y][x].cell_type = CellType.CHANGEABLE
+                    else:
+                        self.game_board[y][x].cell_type = CellType.CHANGEABLE
 
     def is_puzzle_solved(self):
         game_board_values = [[el.value
@@ -314,12 +339,9 @@ class SudokuGame():
         pygame.init()
         self.running = True
         self.current_number = None
+        self.highlight_incorrect = False
 
-        try:
-            self.sudoku_model = SudokuLogic()
-        except Exception as e:
-            print(e)
-            self.running = False
+        self.create_game_model()
 
         # create gui
         self.sudoku_gui = SudokuGui(self.sudoku_model.game_board)
@@ -338,29 +360,33 @@ class SudokuGame():
             # get data of mouse event
             mouse_data = self.sudoku_gui.check_gui_elements_interaction(mouse_pos, is_mouse_pressed)
 
+            if mouse_data.restart:
+                self.restart_game()
+
             # check results in model
             if mouse_data.pressed_hint:
                 # get non-cleared value
                 self.sudoku_model.add_hint_value()
 
-            #if mouse_data.pressed_check_correct:
-            self.sudoku_model.update_correct_values()
+            if mouse_data.pressed_check_correct:
+                self.highlight_incorrect = not self.highlight_incorrect
+
+            self.sudoku_model.update_correct_values(self.highlight_incorrect)
+
 
             if mouse_data.pressed_grid_position is not None:
                 grid_pos_y,grid_pos_x = mouse_data.pressed_grid_position
                 if self.current_number is not None:
                     self.sudoku_model.update_cell(grid_pos_y,grid_pos_x, self.current_number)
-                    self.log_callback(str(grid_pos_y) + "x" + str(grid_pos_x) + ": " + str(self.current_number))
+                    #self.log_callback(str(grid_pos_y) + "x" + str(grid_pos_x) + ": " + str(self.current_number))
             elif mouse_data.pressed_number_cell is not None:
                 self.current_number = mouse_data.pressed_number_cell
-                self.log_callback("chosen number: " + str(self.current_number))
-
-
+                #self.log_callback("chosen number: " + str(self.current_number))
 
             # update gui
             self.sudoku_gui.update_gui(self.sudoku_model.game_board,
                 self.current_number,
-                mouse_data)
+                mouse_data, self.highlight_incorrect)
 
             # check if game completed
             if self.sudoku_model.is_puzzle_solved():
@@ -374,10 +400,21 @@ class SudokuGame():
     def log_callback(self, log_text):
         print(log_text)
 
-    #def create_game():
-    #    pass
-    #def reset_game():# aka finish game
-    #    pass
+    def create_game_model(self):
+        try:
+            self.sudoku_model = SudokuLogic()
+        except Exception as e:
+            print(e)
+            self.running = False
+
+    def restart_game(self):
+        del self.sudoku_model
+        # create new game model
+        self.create_game_model()
+
+        # reset gui values
+        self.sudoku_gui.reset_table(self.sudoku_model.game_board)
+
     #def clean_board():
     #    pass
     #def check_results():
